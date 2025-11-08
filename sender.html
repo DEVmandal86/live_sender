@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>📸 Stream Sender</title>
+  <style>
+    body { background:#0d1117; color:#fff; font-family:sans-serif; text-align:center; }
+    video { width:90%; max-width:500px; border-radius:12px; margin-top:10px; background:black; }
+    input, button { padding:10px; margin:10px; border-radius:8px; border:none; font-size:16px; }
+    button { background:#007bff; color:white; cursor:pointer; }
+    button:hover { background:#0056b3; }
+  </style>
+</head>
+<body>
+  <h2>📸 Stream Sender</h2>
+  <p>Enter a room name and start streaming:</p>
+  <input id="roomInput" placeholder="room123" />
+  <button id="startBtn">Start Streaming</button>
+  <video id="localVideo" autoplay muted playsinline></video>
+
+  <script>
+    const wsUrl = "wss://wss-signaling.herokuapp.com"; // free signaling server
+    let pc, ws, room;
+
+    document.getElementById("startBtn").onclick = async () => {
+      room = document.getElementById("roomInput").value.trim();
+      if (!room) return alert("Enter a room name!");
+
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = async e => {
+        const msg = JSON.parse(e.data);
+        if (msg.room !== room) return;
+        if (msg.type === "answer") await pc.setRemoteDescription(msg.answer);
+        if (msg.type === "candidate") await pc.addIceCandidate(msg.candidate);
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      document.getElementById("localVideo").srcObject = stream;
+
+      pc = new RTCPeerConnection();
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      pc.onicecandidate = e => {
+        if (e.candidate) ws.send(JSON.stringify({ room, type: "candidate", candidate: e.candidate }));
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      ws.onopen = () => ws.send(JSON.stringify({ room, type: "offer", offer }));
+    };
+  </script>
+</body>
+</html>
